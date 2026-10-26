@@ -97,13 +97,13 @@ aside{order:-1;width:100%;padding:12px}
 </script><script>
 (()=>{'use strict';
 const painting=document.getElementById('painting'),ctx=painting.getContext('2d',{alpha:false});const overlay=document.getElementById('ants'),oc=overlay.getContext('2d');const start=document.getElementById('start'),pause=document.getElementById('pause'),reset=document.getElementById('reset'),speed=document.getElementById('speed'),speedLabel=document.getElementById('speedLabel'),status=document.getElementById('status'),heightLabel=document.getElementById('heightLabel'),colors=document.getElementById('colors'),paletteEditors=document.getElementById('paletteEditors');
-let sunX=700,sunY=130,sunRadius=35,sunPainted=0,sunCoreLocked=false;let knifeMode=false,knifeMarks=0,fillMode=false,fillQueue=[],fillPass=0,brushMode=false,brushMarks=0,detailMode=false,detailMarks=0,detailZones=[],knifePlaces=[],accentZones=[];const knifeLimit=95,brushLimit=68,detailLimit=38,skySteps=500000;
+let sunX=700,sunY=130,sunRadius=35,sunPainted=0,sunCoreLocked=false;let knifeMode=false,knifeMarks=0,brushMode=false,brushMarks=0,detailMode=false,detailMarks=0,detailZones=[],knifePlaces=[],accentZones=[],skyCellPool=[];const SKY_CELL_TARGET=90,knifeLimit=95,brushLimit=68,detailLimit=38,skySteps=40*28*SKY_CELL_TARGET;
 const ink=['#00bfd8','#e50091','#ffdf00','#15192a'];let ants=[],height=0,steps=0,running=false,started=false,raf=0,last=0,carry=0;
 const rand=(a,b)=>a+Math.random()*(b-a),clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 // CMYK: elke mier draagt één pigment. Alleen blauw-witte luchtkleuren worden opgebouwd:
 // cyaan + een beetje magenta = blauw; minder pigment = lichtere, witte partijen.
 // Menging gebeurt op hetzelfde pixel via transparante verflagen, niet via CMYK-confetti.
-function resetCanvas(){BosMotor.cancelAll();sunCoreLocked=false;colors.disabled=false;running=false;started=false;BosMotor.cancel(raf);ants=[];height=0;steps=0;carry=0;knifeMode=false;knifeMarks=0;fillMode=false;fillQueue=[];fillPass=0;brushMode=false;brushMarks=0;detailMode=false;detailMarks=0;detailZones=[];knifePlaces=[];accentZones=[];ctx.fillStyle='#fff';ctx.fillRect(0,0,1000,1000);oc.clearRect(0,0,1000,1000);status.textContent='Klaar. Het doek is volledig wit.';heightLabel.textContent='Luchthoogte wordt bij Start willekeurig gekozen (50–70%).';start.textContent='▶ Start mieren'}
+function resetCanvas(){BosMotor.cancelAll();sunCoreLocked=false;colors.disabled=false;running=false;started=false;BosMotor.cancel(raf);ants=[];height=0;steps=0;carry=0;knifeMode=false;knifeMarks=0;brushMode=false;brushMarks=0;detailMode=false;detailMarks=0;detailZones=[];knifePlaces=[];accentZones=[];ctx.fillStyle='#fff';ctx.fillRect(0,0,1000,1000);oc.clearRect(0,0,1000,1000);status.textContent='Klaar. Het doek is volledig wit.';heightLabel.textContent='Luchthoogte wordt bij Start willekeurig gekozen (50–70%).';start.textContent='▶ Start mieren'}
 // Een heel licht onregelmatige rand; dezelfde contour voor de witte kern en de beschermclip.
 function sunCorePoint(i){
  const t=2*Math.PI*i/128;
@@ -119,7 +119,7 @@ function traceSunCore(reverse=false){
  }
  ctx.closePath();
 }
-function init(){sunCoreLocked=false;sunPainted=0;choosePalette();height=Math.round(rand(500,700));sunX=rand(220,780);sunY=rand(85,Math.max(110,height*.48));sunRadius=rand(24,39)*(1+((Number(document.getElementById("sunSize").value)-1)/9)*6.75);if(sunRadius>70){sunX=Math.max(sunRadius,Math.min(1000-sunRadius,sunX));sunY=Math.max(sunRadius,Math.min(height-sunRadius,sunY));}newFields();if(Number(document.getElementById('skyBlend').value)>=8){ctx.fillStyle=tones[3]||'#68b4d3';ctx.fillRect(0,0,1000,height);}heightLabel.textContent='Luchtzone: '+(height/10).toFixed(1)+'% (onzichtbare grens)';ants=ink.map((color,i)=>({x:rand(0,1000),y:rand(0,height),color,i}));started=true;
+function init(){sunCoreLocked=false;sunPainted=0;choosePalette();height=Math.round(rand(500,700));sunX=rand(220,780);sunY=rand(85,Math.max(110,height*.48));sunRadius=rand(24,39)*(1+((Number(document.getElementById("sunSize").value)-1)/9)*6.75);if(sunRadius>70){sunX=Math.max(sunRadius,Math.min(1000-sunRadius,sunX));sunY=Math.max(sunRadius,Math.min(height-sunRadius,sunY));}newFields();skyCellPool=Array.from({length:40*28},(_,i)=>i);if(Number(document.getElementById('skyBlend').value)>=8){ctx.fillStyle=tones[3]||'#68b4d3';ctx.fillRect(0,0,1000,height);}heightLabel.textContent='Luchtzone: '+(height/10).toFixed(1)+'% (onzichtbare grens)';ants=ink.map((color,i)=>({x:rand(0,1000),y:rand(0,height),color,i}));started=true;
  // De kern wordt EENMALIG met de bestaande schildermotor opgebouwd.
  // Daarna is deze verf definitief droog: geen enkele latere streek raakt haar.
  if(document.getElementById('skySun').checked){
@@ -312,15 +312,10 @@ function detailAccent(){
  const target=rgb(light?tones[6]:`rgb(${base.join(',')})`);
  const blend=rand(.22,.73);
  const c=rgb(sunTint(`rgb(${base.map((v,i)=>Math.round(v*(1-blend)+target[i]*blend)).join(",")})`,x,y,1.3));
- // Reliëfschaduw: een iets donkerdere versie van het EIGEN pigment,
- // niet een vaste zwarte of donkerblauwe kleur. Bij lichte verf subtieler.
- const shadowStrength=.045+Math.max(0,1-(.2126*c[0]+.7152*c[1]+.0722*c[2])/255)*.045;
- const shadowColor=`rgb(${c.map(v=>Math.round(v*(1-shadowStrength))).join(',')})`;
  ctx.save();ctx.beginPath();ctx.rect(0,0,1000,height);ctx.clip();protectFinishedSunCore();
  ctx.translate(x,y);ctx.rotate(angle);ctx.lineCap='butt';
  const mode=Math.random();
- if(mode<.40){ // kort dik verfrestje met voelbare slagschaduw
-  ctx.globalAlpha=rand(.12,.23);ctx.fillStyle=shadowColor;ctx.fillRect(-len*.45+2,thick*.25+2,len,thick);
+ if(mode<.40){ // kort verfrestje zonder slagschaduw
   ctx.globalAlpha=rand(.78,.98);ctx.fillStyle=`rgb(${c.join(',')})`;
   ctx.beginPath();ctx.moveTo(-len*.5,-thick*.4);ctx.lineTo(len*.35,-thick*.55);ctx.lineTo(len*.5,thick*.15);ctx.lineTo(-len*.35,thick*.5);ctx.closePath();ctx.fill();
   ctx.globalAlpha=.55;ctx.strokeStyle=tones[6];ctx.lineWidth=rand(.5,1.6);ctx.beginPath();ctx.moveTo(-len*.42,-thick*.37);ctx.lineTo(len*.26,-thick*.5);ctx.stroke();
@@ -333,7 +328,6 @@ function detailAccent(){
  }else{ // scherp licht op bestaande verfwal
   ctx.globalAlpha=rand(.48,.82);ctx.strokeStyle=light?tones[6]:`rgb(${c.join(',')})`;
   ctx.lineWidth=rand(.7,2.1);ctx.beginPath();ctx.moveTo(-len*.5,0);ctx.quadraticCurveTo(0,-thick,len*.5,rand(-2,2));ctx.stroke();
-  ctx.globalAlpha=.12;ctx.strokeStyle=shadowColor;ctx.lineWidth=rand(1.3,3);ctx.beginPath();ctx.moveTo(-len*.4,thick*.4);ctx.lineTo(len*.3,thick*.4);ctx.stroke();
  }
  ctx.restore();detailMarks++;
 }
@@ -360,7 +354,7 @@ function protectFinishedSunCore(){
  traceSunCore(true);
  ctx.clip('evenodd');
 }
-function deposit(a,force=false,paintIndex=null){
+function deposit(a,force=false,paintIndex=null,balanced=false){
  const x=a.x,y=a.y;
  // De mieren blijven overal schilderen, ook in de zon: geen aparte verfwijze.
  // De kern krijgt wit pigment in plaats van uitgespaard te worden.
@@ -377,7 +371,7 @@ function deposit(a,force=false,paintIndex=null){
  const ci=cy*40+cx;
  const density=coverage[ci];
  const chance=Math.min(.48,.003+Math.pow(score,1.5)*(whitePresent && chosen && chosen.tone===6?.46:.28)) / (1+density*.025);
- if(!force && Math.random()>Math.min(.96,chance+Number(document.getElementById('skyBlend').value)*.045))return;
+ if(!force && !balanced && Math.random()>Math.min(.96,chance+Number(document.getElementById('skyBlend').value)*.045))return;
  coverage[ci]=Math.min(65535,density+1);
  const field=chosen||fields[0];
  // Wit vormt eigen verspreide kleurgebieden en groeit tegelijk met de blauwe verf.
@@ -634,36 +628,6 @@ function deposit(a,force=false,paintIndex=null){
 // Oude herstelroutine is niet langer actief; wit wordt meteen geschilderd.
 // De afwerkingsronde zoekt uitsluitend werkelijk onbeschilderde (zuiver witte)
 // pixels in de lucht. De oorspronkelijke luchtmotor en messtreken blijven intact.
-function scanWhiteGaps(){
- const data=ctx.getImageData(0,0,1000,height).data;
- const gaps=[];
- for(let y=3;y<height-3;y+=5)for(let x=3;x<997;x+=5){
-  const i=(y*1000+x)*4;
-  if(data[i]>251 && data[i+1]>251 && data[i+2]>251)gaps.push([x,y]);
- }
- for(let i=gaps.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[gaps[i],gaps[j]]=[gaps[j],gaps[i]]}
- return gaps;
-}
-function finishSky(){
- fillMode=true;fillPass=0;fillQueue=scanWhiteGaps();
- if(!fillQueue.length){fillMode=false;knifeMode=true}
-}
-function fillWhiteGaps(){
- // Geen plotselinge invulling: de vier mieren schilderen de open doekplekjes
- // met zichtbare witte verfstreken, geleidelijk, in hun gewone kwastvormen.
- // Een zweem van blauw in een deel van de streken geeft de natte witte verf
- // alvast een natuurlijke overgang naar de kleurmengende schildersmessen.
- for(let i=0;i<12 && fillQueue.length;i++){
-  const [x,y]=fillQueue.pop();const a=ants[i%4];
-  a.x=x+rand(-3,3);a.y=y+rand(-3,3);
-  deposit(a,true,Math.random()<.82?6:5);
- }
- if(!fillQueue.length){
-  fillPass++;
-  if(fillPass<5)fillQueue=scanWhiteGaps();
-  if(!fillQueue.length || fillPass>=5){fillMode=false;knifeMode=true}
- }
-}
 // De zon wordt door dezelfde mieren geleidelijk opgebouwd TIJDENS de luchtfase.
 // Geen finale gele cirkel, geen halo die op het einde plots verschijnt.
 function paintSunStep(){
@@ -682,30 +646,35 @@ function paintSunStep(){
  deposit({x,y,i:Math.floor(rand(0,4))},true,index);
 }
 function showAnts(){oc.clearRect(0,0,1000,1000);for(const a of ants){oc.fillStyle=ink[a.i];oc.strokeStyle='#17202e';oc.lineWidth=2;oc.beginPath();oc.arc(a.x,a.y,8,0,Math.PI*2);oc.fill();oc.stroke()}}
+function paintBalancedSky(a){
+ if(!skyCellPool.length)return false;
+ const slot=Math.floor(rand(0,skyCellPool.length));
+ const cell=skyCellPool[slot],cx=cell%40,cy=Math.floor(cell/40);
+ a.x=(cx+rand(.08,.92))*25;
+ a.y=(cy+rand(.08,.92))*height/28;
+ deposit(a,false,null,true);
+ if(coverage[cell]>=SKY_CELL_TARGET){skyCellPool[slot]=skyCellPool[skyCellPool.length-1];skyCellPool.pop();}
+ return true;
+}
 function frame(now){if(!running)return;const elapsed=Math.min((now-last)/1000,.05);last=now;carry+=Number(speed.value)*elapsed;const n=Math.min(Math.floor(carry),2600);carry-=n;
 // Vier springende mieren: geen doorlopende lijn of wandelspoor.
 // Verplaatsing op elk beeld zichtbaar; pigmentafzetting op vele losse plekken.
 for(const a of ants){a.x=rand(0,1000);a.y=rand(0,height)}
-if(!knifeMode && !fillMode && !brushMode && !detailMode){
+if(!knifeMode && !brushMode && !detailMode){
  const skyCount=Math.min(n,Math.max(0,skySteps-steps));
- for(let i=0;i<skyCount;i++){const a=ants[i%4];a.x=rand(0,1000);a.y=rand(0,height);deposit(a)}
- steps+=skyCount;
- // Vanaf het eerste deel van de luchtfase verschijnt de zon langzaam tussen
- // de gewone verfstreken, zodat latere verf er weer natuurlijk overheen valt.
+ let painted=0;
+ for(let i=0;i<skyCount;i++){const a=ants[i%4];if(!paintBalancedSky(a))break;painted++;}
+ steps+=painted;
+ // De zon groeit mee met de gewone, gelijkmatig verdeelde luchtstreken.
  if(document.getElementById('skySun').checked){
    const desired=Math.floor(4200*Math.min(1,steps/(skySteps*.93)));
    for(let j=0;j<Math.min(22,Math.max(0,desired-sunPainted));j++)paintSunStep();
  }
- if(steps>=skySteps){
-   // Geen plotselinge zon aan het einde: de kern is al tijdens de lucht geschilderd.
-   // Een laatste kleine hoeveelheid witte toetsen maakt hem leesbaar.
+ if(steps>=skySteps || !skyCellPool.length){
    if(document.getElementById('skySun').checked)for(let j=0;j<180;j++){
      sunPainted=Math.min(sunPainted,4199);paintSunStep();
    }
-   finishSky();
-   status.textContent=fillMode?'Luchtbasis klaar · witte plekjes gericht vullen':'Luchtbasis klaar · geen witte plekjes gevonden'}
-}else if(fillMode){
- fillWhiteGaps();
+   knifeMode=true;status.textContent='Luchtlaag 1 klaar · alle kleurzones gelijkmatig beschilderd'}
 }else if(detailMode){
  if(detailMarks<detailLimit)detailAccent();
 }else if(brushMode){
