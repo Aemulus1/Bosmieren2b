@@ -822,7 +822,7 @@ function tick(now){
   if(!finalFillStarted&&marks>=4500){
    finalFillStarted=true;
    // Eén grove eindcontrole; geen herhaalde kopie en scan van het hele vlak.
-   gapQueue=findGaps(4);
+   gapQueue=findGaps(16);
    if(!gapQueue.length){finishGroundLayer1();return;}
   }
   if(finalFillStarted){
