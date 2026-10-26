@@ -71,6 +71,30 @@ aside{order:-1;width:100%;padding:12px}
 <canvas id="ants" width="1000" height="1000"></canvas>
 </div>
 </div></main><script>
+/* Eén gedeelde animatiemotor: één requestAnimationFrame bestuurt alle lagen. */
+(()=>{
+ const nativeRequest=window.requestAnimationFrame.bind(window);
+ const nativeCancel=window.cancelAnimationFrame.bind(window);
+ let callbacks=new Map(),nextId=1,frameHandle=0,paused=false;
+ function pump(){
+  if(paused||frameHandle||callbacks.size===0)return;
+  frameHandle=nativeRequest(now=>{
+   frameHandle=0;
+   const batch=[...callbacks.entries()];callbacks.clear();
+   for(const [id,fn] of batch){try{fn(now)}catch(error){console.error('Bosmieren-motor:',error)}}
+   pump();
+  });
+ }
+ window.BosMotor={
+  request(fn){const id=nextId++;callbacks.set(id,fn);pump();return id},
+  cancel(id){callbacks.delete(id)},
+  cancelAll(){callbacks.clear();if(frameHandle){nativeCancel(frameHandle);frameHandle=0}},
+  pause(){paused=true;if(frameHandle){nativeCancel(frameHandle);frameHandle=0}},
+  resume(){paused=false;pump()},
+  get active(){return frameHandle!==0||callbacks.size>0}
+ };
+})();
+</script><script>
 (()=>{'use strict';
 const painting=document.getElementById('painting'),ctx=painting.getContext('2d',{alpha:false});const overlay=document.getElementById('ants'),oc=overlay.getContext('2d');const start=document.getElementById('start'),pause=document.getElementById('pause'),reset=document.getElementById('reset'),speed=document.getElementById('speed'),speedLabel=document.getElementById('speedLabel'),status=document.getElementById('status'),heightLabel=document.getElementById('heightLabel'),colors=document.getElementById('colors'),paletteEditors=document.getElementById('paletteEditors');
 let sunX=700,sunY=130,sunRadius=35,sunPainted=0,sunCoreLocked=false;let knifeMode=false,knifeMarks=0,fillMode=false,fillQueue=[],fillPass=0,brushMode=false,brushMarks=0,detailMode=false,detailMarks=0,detailZones=[],knifePlaces=[],accentZones=[];const knifeLimit=95,brushLimit=68,detailLimit=38,skySteps=1200000;
@@ -79,7 +103,7 @@ const rand=(a,b)=>a+Math.random()*(b-a),clamp=(v,a,b)=>Math.max(a,Math.min(b,v))
 // CMYK: elke mier draagt één pigment. Alleen blauw-witte luchtkleuren worden opgebouwd:
 // cyaan + een beetje magenta = blauw; minder pigment = lichtere, witte partijen.
 // Menging gebeurt op hetzelfde pixel via transparante verflagen, niet via CMYK-confetti.
-function resetCanvas(){sunCoreLocked=false;colors.disabled=false;running=false;started=false;cancelAnimationFrame(raf);ants=[];height=0;steps=0;carry=0;knifeMode=false;knifeMarks=0;fillMode=false;fillQueue=[];fillPass=0;brushMode=false;brushMarks=0;detailMode=false;detailMarks=0;detailZones=[];knifePlaces=[];accentZones=[];ctx.fillStyle='#fff';ctx.fillRect(0,0,1000,1000);oc.clearRect(0,0,1000,1000);status.textContent='Klaar. Het doek is volledig wit.';heightLabel.textContent='Luchthoogte wordt bij Start willekeurig gekozen (50–70%).';start.textContent='▶ Start mieren'}
+function resetCanvas(){BosMotor.cancelAll();sunCoreLocked=false;colors.disabled=false;running=false;started=false;BosMotor.cancel(raf);ants=[];height=0;steps=0;carry=0;knifeMode=false;knifeMarks=0;fillMode=false;fillQueue=[];fillPass=0;brushMode=false;brushMarks=0;detailMode=false;detailMarks=0;detailZones=[];knifePlaces=[];accentZones=[];ctx.fillStyle='#fff';ctx.fillRect(0,0,1000,1000);oc.clearRect(0,0,1000,1000);status.textContent='Klaar. Het doek is volledig wit.';heightLabel.textContent='Luchthoogte wordt bij Start willekeurig gekozen (50–70%).';start.textContent='▶ Start mieren'}
 // Een heel licht onregelmatige rand; dezelfde contour voor de witte kern en de beschermclip.
 function sunCorePoint(i){
  const t=2*Math.PI*i/128;
@@ -710,11 +734,11 @@ if(brushMode&&brushMarks>=brushLimit){
  detailZones=Array.from({length:Math.floor(rand(2,5))},()=>({x:rand(0,1000),y:rand(0,height),r:rand(45,135)}));
  status.textContent='Laag 4 · laatste impasto-details';
 }
-if(detailMode&&detailMarks>=detailLimit){running=false;cancelAnimationFrame(raf);start.textContent='✓ Klaar';status.textContent='Lucht voltooid · '+detailMarks+' kleine detailaccenten';return}
+if(detailMode&&detailMarks>=detailLimit){running=false;BosMotor.cancel(raf);start.textContent='✓ Klaar';status.textContent='Lucht voltooid · '+detailMarks+' kleine detailaccenten';return}
 status.textContent=detailMode?'Laag 4 · fijne impasto-details: '+detailMarks+' / '+detailLimit+' accenten':brushMode?'Laag 3 · draaiende vierkante penselen: '+brushMarks+' / '+brushLimit+' accenten':knifeMode?'Laag 2 · schildersmessen: '+knifeMarks+' / '+knifeLimit+' accenten':'Laag 1 · CMYK-lucht: '+steps.toLocaleString('nl-BE')+' / '+skySteps.toLocaleString('nl-BE')+' stappen';
-raf=requestAnimationFrame(frame)}
-start.onclick=()=>{if(!started)init();if(!running){running=true;last=performance.now();start.textContent='▶ Bezig';raf=requestAnimationFrame(frame)}};
-pause.onclick=()=>{running=false;cancelAnimationFrame(raf);start.textContent='▶ Verder';status.textContent='Gepauzeerd · '+steps.toLocaleString('nl-BE')+' stappen'};
+raf=BosMotor.request(frame)}
+start.onclick=()=>{BosMotor.resume();if(!started)init();if(!running){running=true;last=performance.now();start.textContent='▶ Bezig';raf=BosMotor.request(frame)}};
+pause.onclick=()=>{BosMotor.pause();running=false;BosMotor.cancel(raf);start.textContent='▶ Verder';status.textContent='Gepauzeerd · '+steps.toLocaleString('nl-BE')+' stappen'};
 reset.onclick=resetCanvas;speed.oninput=()=>speedLabel.textContent=Number(speed.value).toLocaleString('nl-BE');resetCanvas();renderPaletteEditors();
 })();</script>
 <script>
@@ -778,12 +802,12 @@ function makeEditors(){edit.replaceChildren();for(let i=0;i<Number(num.value);i+
  const name=document.createElement('span');name.textContent='Kleur '+(i+1);
  pick.addEventListener('input',()=>{palette[i]=pick.value;restartGround();});wrap.append(pick,name);edit.append(wrap);
 }}
-function restartGround(){document.dispatchEvent(new Event('bosmieren:ground-reset'));cancelAnimationFrame(frameId);cancelAnimationFrame(knifeFrame);cancelAnimationFrame(wideFrame);cancelAnimationFrame(groundReliefFrame);wideWorking=false;wideDone=false;wideMarks=0;detailMarks3=0;wideCarry=0;ground3Info.textContent='Laag 3 wacht op de kleine schildersmessen.';knifeWorking=false;knifeDone=false;knifeMarks=0;knifeCarry=0;ground2Info.textContent='Laag 2 wacht op de eerste grondlaag.';working=false;done=false;marks=0;gapQueue=[];gapPass=0;nextGapScan=0;coverageComplete=false;groundAnts=[];g.clearRect(0,0,1000,1000);info.textContent='Grondpalet klaar. Start opnieuw om lucht en grond te schilderen.';}
+function restartGround(){document.dispatchEvent(new Event('bosmieren:ground-reset'));BosMotor.cancel(frameId);BosMotor.cancel(knifeFrame);BosMotor.cancel(wideFrame);BosMotor.cancel(groundReliefFrame);wideWorking=false;wideDone=false;wideMarks=0;detailMarks3=0;wideCarry=0;ground3Info.textContent='Laag 3 wacht op de kleine schildersmessen.';knifeWorking=false;knifeDone=false;knifeMarks=0;knifeCarry=0;ground2Info.textContent='Laag 2 wacht op de eerste grondlaag.';working=false;done=false;marks=0;gapQueue=[];gapPass=0;nextGapScan=0;coverageComplete=false;groundAnts=[];g.clearRect(0,0,1000,1000);info.textContent='Grondpalet klaar. Start opnieuw om lucht en grond te schilderen.';}
 num.addEventListener('change',()=>{makeEditors();restartGround()});
 reset.addEventListener('click',()=>{restartGround();info.textContent='De grond begint automatisch na de lucht.'});
 function parseHeight(){const match=heightLabel.textContent.match(/([\d.]+)%/);return match?Math.round(parseFloat(match[1])*10):600}
 function begin(){if(working||done)return;top=parseHeight();marks=0;gapQueue=[];gapPass=0;nextGapScan=0;coverageComplete=false;patches=Array.from({length:25},()=>({x:random(-70,1070),y:random(top,1030),rx:random(60,230),ry:random(45,140),color:Math.floor(random(0,Number(num.value)))}));
- groundAnts=Array.from({length:4},()=>({x:random(0,1000),y:random(top,1000)}));working=true;last=performance.now();drawGroundDots();frameId=requestAnimationFrame(tick);}
+ groundAnts=Array.from({length:4},()=>({x:random(0,1000),y:random(top,1000)}));working=true;last=performance.now();drawGroundDots();frameId=BosMotor.request(tick);}
 // Meng uitsluitend in de grondmodule: natte onderkleur wordt door de nieuwe streek meegenomen.
 function rgb(hex){return [1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));}
 function mixed(a,b,t){return `rgb(${a.map((v,i)=>Math.round(v*(1-t)+b[i]*t)).join(',')})`;}
@@ -858,7 +882,7 @@ function tick(now){
  }
  drawGroundDots();
  info.textContent='Bosgrond laag 1 · dots schilderen geleidelijk het hele vlak · '+marks.toLocaleString('nl-BE')+' streken';
- frameId=requestAnimationFrame(tick);
+ frameId=BosMotor.request(tick);
 }
 // Luister uitsluitend naar de publieke status van de luchtmodule, zonder die te wijzigen.
 new MutationObserver(()=>{if(!working&&!done&&status.textContent.startsWith('Lucht voltooid'))begin()}).observe(status,{childList:true,characterData:true,subtree:true});
@@ -873,7 +897,7 @@ function makeGround2Editors(){ground2Edit.replaceChildren();for(let i=0;i<Number
  pick.addEventListener('input',()=>{ground2Palette[i]=pick.value;restartGround();});wrap.append(pick,name);ground2Edit.append(wrap);
 }}
 ground2Num.addEventListener('change',()=>{makeGround2Editors();restartGround()});
-function beginKnives(){if(knifeWorking||knifeDone)return;KNIFE_TARGET=Number(smallAmount.value);knifeZones=makeKnifeZones();knifeWorking=true;knifeMarks=0;knifeCarry=0;knifeLast=performance.now();ground2Info.textContent='Laag 2 · de kleine schildersmessen zijn aan het werk';knifeFrame=requestAnimationFrame(knifeTick);}
+function beginKnives(){if(knifeWorking||knifeDone)return;KNIFE_TARGET=Number(smallAmount.value);knifeZones=makeKnifeZones();knifeWorking=true;knifeMarks=0;knifeCarry=0;knifeLast=performance.now();ground2Info.textContent='Laag 2 · de kleine schildersmessen zijn aan het werk';knifeFrame=BosMotor.request(knifeTick);}
 // Onregelmatige plaatselijke concentraties, zonder symmetrische vlakverdeling.
 let knifeZones=[],wideZones=[];
 function makeKnifeZones(){
@@ -944,7 +968,7 @@ function knifeTick(now){if(!knifeWorking)return;const dt=Math.min(.05,(now-knife
  for(let i=0;i<count&&knifeMarks<KNIFE_TARGET;i++)knifeStroke();
  drawGroundDots();ground2Info.textContent='Grondlaag 2 · kleine schildersmessen: '+knifeMarks+' / '+KNIFE_TARGET+' accenten';
  if(knifeMarks>=KNIFE_TARGET){knifeWorking=false;knifeDone=true;ground2Info.textContent='Grondlaag 2 klaar · '+KNIFE_TARGET+' mesaccenten';beginWide();return;}
- knifeFrame=requestAnimationFrame(knifeTick);
+ knifeFrame=BosMotor.request(knifeTick);
 }
 // GRONDLAAG 3 — onafhankelijke toevoeging na de ongewijzigde tweede grondlaag.
 // Een breed mes trekt wisselende volumes natte verf mee; daarna werkt hetzelfde
@@ -970,13 +994,13 @@ function fineKnife(){const {x,y}=choosePlace(),under=sampleGround(x,y),fresh=ran
  else {g.beginPath();g.moveTo(-L*.5,-W*.5);g.lineTo(L*.5,-W*.3);g.lineTo(L*random(.1,.5),W*.6);g.lineTo(-L*.5,W*.5);g.closePath();g.fill();}
  g.save();g.clip();shadeEachGroundStroke(L,W,angle,fresh);g.restore();
  g.globalAlpha=random(.18,.5);g.strokeStyle=mixed(fresh,[255,255,255],random(.15,.5));g.lineWidth=random(.4,1.3);g.beginPath();g.moveTo(-L*.4,-W*.3);g.lineTo(L*.3,W*.1);g.stroke();g.restore();detailMarks3++;}
-function beginWide(){if(wideWorking||wideDone)return;WIDE_TARGET=Number(wideAmount.value);wideZones=makeKnifeZones();wideWorking=true;wideMarks=0;detailMarks3=0;wideCarry=0;wideLast=performance.now();ground3Info.textContent='Grondlaag 3 · brede messen aan het werk';wideFrame=requestAnimationFrame(wideTick);}
+function beginWide(){if(wideWorking||wideDone)return;WIDE_TARGET=Number(wideAmount.value);wideZones=makeKnifeZones();wideWorking=true;wideMarks=0;detailMarks3=0;wideCarry=0;wideLast=performance.now();ground3Info.textContent='Grondlaag 3 · brede messen aan het werk';wideFrame=BosMotor.request(wideTick);}
 function wideTick(now){if(!wideWorking)return;const dt=Math.min(.05,(now-wideLast)/1000);wideLast=now;wideCarry+=dt*Number(speed.value)/115;
  const count=Math.min(20,Math.floor(wideCarry));wideCarry-=count;
  for(let i=0;i<count;i++){if(wideMarks<WIDE_TARGET)broadKnife();else if(detailMarks3<GROUND_DETAIL_TARGET)fineKnife();else break;}
  drawGroundDots();ground3Info.textContent=wideMarks<WIDE_TARGET?'Grondlaag 3 · breed mes: '+wideMarks+' / '+WIDE_TARGET:detailMarks3<GROUND_DETAIL_TARGET?'Grondlaag 3 · zijkant en punt: '+detailMarks3+' / '+GROUND_DETAIL_TARGET:'Grondlaag 3 voltooid';
  if(wideMarks>=WIDE_TARGET&&detailMarks3>=GROUND_DETAIL_TARGET){wideWorking=false;wideDone=true;finishGroundRelief();return;}
- wideFrame=requestAnimationFrame(wideTick);
+ wideFrame=BosMotor.request(wideTick);
 }
 
 // Geen aparte licht/schaduwronde: elke veeg in laag 1, 2 en 3 krijgt zelf reliëf.
@@ -999,7 +1023,7 @@ const snapshot=document.createElement('canvas');snapshot.width=snapshot.height=1
 let active=false,frame=0,done=0,total=0,queue=[],last=0,carry=0,points=[];
 const rnd=(a,b)=>a+Math.random()*(b-a),clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 function hexRgb(hex){return [1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));}
-function reset(){active=false;cancelAnimationFrame(frame);h.clearRect(0,0,1000,1000);done=0;queue=[];status.textContent='Wacht op de geschilderde grondlagen.';}
+function reset(){active=false;BosMotor.cancel(frame);h.clearRect(0,0,1000,1000);done=0;queue=[];status.textContent='Wacht op de geschilderde grondlagen.';}
 function horizonY(){const text=document.getElementById('heightLabel').textContent;const m=text.match(/Luchtzone:\s*([\d.,]+)%/);return m?Number(m[1].replace(',','.'))*10:600;}
 function makeQueue(){queue=[];const amounts=[+controls.horizonThinBrush.value,+controls.horizonThickBrush.value,+controls.horizonThinKnife.value,+controls.horizonWideKnife.value];
  // Iedere stap op de schuiver staat voor 20 afzonderlijke, zichtbare schilderbewegingen.
@@ -1246,11 +1270,11 @@ function tick(now){if(!active)return;const dt=Math.min(.05,(now-last)/1000);last
   if(seamPass<72){for(let j=0;j<Math.min(4,72-seamPass);j++){paintOne(Math.floor(rnd(0,4)),true);seamPass++;}status.textContent='Horizon: laatste grillige mengaccenten · '+seamPass+' / 72';}
   else {active=false;status.textContent='Horizon voltooid · '+done+' mengbewegingen + '+seamPass+' grensaccenten';document.dispatchEvent(new Event('bosmieren:horizon-finished'));return;}
  }
- frame=requestAnimationFrame(tick);
+ frame=BosMotor.request(tick);
 }
 function start(){reset();const H=+controls.horizonHeight.value;makeQueue();if(!H||!total){status.textContent='Horizonmodule overgeslagen (hoogte of aantallen op 0).';document.dispatchEvent(new Event('bosmieren:horizon-finished'));return;}
  source.clearRect(0,0,1000,1000);source.drawImage(sky,0,0);source.drawImage(ground,0,0);
- makeClusters(H);seamPass=0;active=true;points=[];carry=0;last=performance.now();frame=requestAnimationFrame(tick);
+ makeClusters(H);seamPass=0;active=true;points=[];carry=0;last=performance.now();frame=BosMotor.request(tick);
 }
 document.addEventListener('bosmieren:ground-finished',start);
 document.addEventListener('bosmieren:ground-reset',reset);
