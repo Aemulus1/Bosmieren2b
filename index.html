@@ -97,7 +97,7 @@ aside{order:-1;width:100%;padding:12px}
 </script><script>
 (()=>{'use strict';
 const painting=document.getElementById('painting'),ctx=painting.getContext('2d',{alpha:false});const overlay=document.getElementById('ants'),oc=overlay.getContext('2d');const start=document.getElementById('start'),pause=document.getElementById('pause'),reset=document.getElementById('reset'),speed=document.getElementById('speed'),speedLabel=document.getElementById('speedLabel'),status=document.getElementById('status'),heightLabel=document.getElementById('heightLabel'),colors=document.getElementById('colors'),paletteEditors=document.getElementById('paletteEditors');
-let sunX=700,sunY=130,sunRadius=35,sunPainted=0,sunCoreLocked=false;let knifeMode=false,knifeMarks=0,brushMode=false,brushMarks=0,detailMode=false,detailMarks=0,detailZones=[],knifePlaces=[],accentZones=[],skyCellPool=[];const SKY_CELL_TARGET=90,knifeLimit=95,brushLimit=68,detailLimit=38,skySteps=40*28*SKY_CELL_TARGET;
+let sunX=700,sunY=130,sunRadius=35,sunPainted=0,sunCoreLocked=false;let knifeMode=false,knifeMarks=0,brushMode=false,brushMarks=0,detailMode=false,detailMarks=0,detailZones=[],knifePlaces=[],accentZones=[],skyCellPool=[];const SKY_CELL_TARGET=300,knifeLimit=95,brushLimit=68,detailLimit=38,skySteps=40*28*SKY_CELL_TARGET;
 const ink=['#00bfd8','#e50091','#ffdf00','#15192a'];let ants=[],height=0,steps=0,running=false,started=false,raf=0,last=0,carry=0;
 const rand=(a,b)=>a+Math.random()*(b-a),clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 // CMYK: elke mier draagt één pigment. Alleen blauw-witte luchtkleuren worden opgebouwd:
@@ -223,8 +223,6 @@ function knifeStroke(a){
   else{ctx.moveTo(-L,-W*.82);ctx.lineTo(-L*.55,-W);ctx.lineTo(L*.62,-W*.92);ctx.lineTo(L,-W*.45);ctx.lineTo(L*.9,W*.45);ctx.lineTo(L*.53,W*.9);ctx.lineTo(-L*.68,W);ctx.lineTo(-L*.96,W*.42);ctx.closePath()}
  }
  ctx.save();ctx.beginPath();ctx.rect(0,0,1000,height);ctx.clip();protectFinishedSunCore();ctx.translate(x,y);ctx.rotate(angle);
- // Schaduw valt op de reeds aanwezige verf, en verschuift met de verfdikte.
- ctx.save();ctx.translate(2+thickness*4,2+thickness*5);ctx.globalAlpha=.16+thickness*.24;ctx.fillStyle='#09244c';shape();ctx.fill();ctx.restore();
  // De nieuwe verf bevat letterlijk een kleurmonster van de laag eronder.
  const gradient=ctx.createLinearGradient(-L,0,L,0);
  const pigmentStrength=rand(.08,.93);
@@ -238,9 +236,6 @@ function knifeStroke(a){
   ctx.lineWidth=rand(.6,2.8)*(.5+thickness);ctx.globalAlpha=rand(.28,.75);ctx.strokeStyle=mix(samples[idx],t);ctx.stroke();
  }
  ctx.restore();
- // Licht aan de opstaande rand, donkerte aan de tegenoverliggende rand.
- ctx.globalAlpha=.18+thickness*.30;ctx.strokeStyle='#081e4b';ctx.lineWidth=1+thickness*3;
- ctx.beginPath();ctx.moveTo(-L*.82,W*.66);ctx.lineTo(L*.58,W*.43);ctx.stroke();
  ctx.globalAlpha=.25+thickness*.45;ctx.strokeStyle=blendColors(palette[ci],'#ffffff',.42);ctx.lineWidth=.8+thickness*2.5;
  ctx.beginPath();ctx.moveTo(-L*.84,-W*.62);ctx.lineTo(L*.6,-W*.64);ctx.stroke();
  ctx.restore();knifePlaces.push({x,y,angle,length,w});knifeMarks++;
@@ -276,8 +271,6 @@ function squareBrushAccent(){
   const pressure=Math.sin(Math.PI*(.12+.76*t));
   const side=width*(.65+.35*pressure);
   ctx.save();ctx.translate(xx,yy);ctx.rotate(turn);
-  // Een dunne donkere verfwal naast de dikkere verf.
-  ctx.globalAlpha=.11*pressure;ctx.fillStyle='#061b40';ctx.fillRect(-side*.48+1.5,-side*.42+2,side,side*.83);
   ctx.globalAlpha=rand(.24,.85)*pressure;
   ctx.fillStyle=`rgb(${r},${g},${b})`;
   ctx.fillRect(-side*.5,-side*.5,side,side);
