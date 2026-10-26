@@ -97,7 +97,7 @@ aside{order:-1;width:100%;padding:12px}
 </script><script>
 (()=>{'use strict';
 const painting=document.getElementById('painting'),ctx=painting.getContext('2d',{alpha:false});const overlay=document.getElementById('ants'),oc=overlay.getContext('2d');const start=document.getElementById('start'),pause=document.getElementById('pause'),reset=document.getElementById('reset'),speed=document.getElementById('speed'),speedLabel=document.getElementById('speedLabel'),status=document.getElementById('status'),heightLabel=document.getElementById('heightLabel'),colors=document.getElementById('colors'),paletteEditors=document.getElementById('paletteEditors');
-let sunX=700,sunY=130,sunRadius=35,sunPainted=0,sunCoreLocked=false;let knifeMode=false,knifeMarks=0,fillMode=false,fillQueue=[],fillPass=0,brushMode=false,brushMarks=0,detailMode=false,detailMarks=0,detailZones=[],knifePlaces=[],accentZones=[];const knifeLimit=95,brushLimit=68,detailLimit=38,skySteps=1200000;
+let sunX=700,sunY=130,sunRadius=35,sunPainted=0,sunCoreLocked=false;let knifeMode=false,knifeMarks=0,fillMode=false,fillQueue=[],fillPass=0,brushMode=false,brushMarks=0,detailMode=false,detailMarks=0,detailZones=[],knifePlaces=[],accentZones=[];const knifeLimit=95,brushLimit=68,detailLimit=38,skySteps=500000;
 const ink=['#00bfd8','#e50091','#ffdf00','#15192a'];let ants=[],height=0,steps=0,running=false,started=false,raf=0,last=0,carry=0;
 const rand=(a,b)=>a+Math.random()*(b-a),clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 // CMYK: elke mier draagt één pigment. Alleen blauw-witte luchtkleuren worden opgebouwd:
@@ -702,7 +702,8 @@ if(!knifeMode && !fillMode && !brushMode && !detailMode){
    if(document.getElementById('skySun').checked)for(let j=0;j<180;j++){
      sunPainted=Math.min(sunPainted,4199);paintSunStep();
    }
-   knifeMode=true;status.textContent='Laag 1 klaar · laag 2 schildersmessen'}
+   finishSky();
+   status.textContent=fillMode?'Luchtbasis klaar · witte plekjes gericht vullen':'Luchtbasis klaar · geen witte plekjes gevonden'}
 }else if(fillMode){
  fillWhiteGaps();
 }else if(detailMode){
